@@ -21,6 +21,7 @@
     "typescript": "^5.4.5"
   },
   "dependencies": {
-    "undici-types": "^6.18.2"
+    "undici-types": "^6.18.2",
+    "webflow-api": "^2.3.2"
   }
 }
