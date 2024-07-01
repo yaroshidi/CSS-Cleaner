@@ -7,9 +7,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
 let stylesWithProperties: Array<{ name: string, properties: any }> = [];
 
-async function scanForDuplicates(): Promise<void> {
+async function scanForDuplicates() {
     showLoading();
-    const container = document.getElementById('duplicates-container') as HTMLElement;
+    const container = document.getElementById('duplicates-container');
     if (container) container.style.display = 'none';
 
     try {
@@ -48,7 +48,7 @@ function detectDuplicates(styles: Array<{ name: string, properties: any }>) {
             continue;
         }
         if (processed.has(i)) continue;
-        const duplicateGroup: Array<string> = [name1];
+        const duplicateGroup = [name1];
         for (let j = i + 1; j < styles.length; j++) {
             if (processed.has(j)) continue;
             const { name: name2, properties: properties2 } = styles[j];
@@ -66,8 +66,8 @@ function detectDuplicates(styles: Array<{ name: string, properties: any }>) {
     return { duplicates, emptyStyles };
 }
 
-function displayDuplicatesAndEmptyStyles(data: { duplicates: Array<Array<string>>, emptyStyles: Array<string> }): void {
-    const container = document.getElementById('duplicates-container') as HTMLElement;
+function displayDuplicatesAndEmptyStyles(data: { duplicates: Array<Array<string>>, emptyStyles: Array<string> }) {
+    const container = document.getElementById('duplicates-container');
     if (container) {
         container.innerHTML = '';
 
@@ -93,42 +93,12 @@ function displayDuplicatesAndEmptyStyles(data: { duplicates: Array<Array<string>
             group.forEach(name => {
                 const li = document.createElement('li');
                 li.textContent = name;
+                li.addEventListener('click', () => {
+                    selectStyleInWebflow(name);
+                });
                 ul.appendChild(li);
             });
             groupDiv.appendChild(ul);
-
-            const newClassInputDiv = document.createElement('div');
-            newClassInputDiv.classList.add('new-class-input');
-
-            const checkbox = document.createElement('input');
-            checkbox.type = 'checkbox';
-            checkbox.addEventListener('change', () => {
-                if (checkbox.checked) {
-                    input.style.display = 'inline';
-                    submitButton.style.display = 'inline';
-                } else {
-                    input.style.display = 'none';
-                    submitButton.style.display = 'none';
-                }
-            });
-
-            const input = document.createElement('input');
-            input.type = 'text';
-            input.placeholder = 'New class name';
-
-            const submitButton = document.createElement('button');
-            submitButton.textContent = 'Replace';
-            submitButton.addEventListener('click', async () => {
-                const newClassName = input.value.trim();
-                if (newClassName) {
-                    await replaceDuplicateGroup(group, newClassName, style?.properties);
-                }
-            });
-
-            newClassInputDiv.appendChild(checkbox);
-            newClassInputDiv.appendChild(input);
-            newClassInputDiv.appendChild(submitButton);
-            groupDiv.appendChild(newClassInputDiv);
 
             container.appendChild(groupDiv);
         });
@@ -152,52 +122,61 @@ function displayDuplicatesAndEmptyStyles(data: { duplicates: Array<Array<string>
     }
 }
 
-async function replaceDuplicateGroup(group: Array<string>, newClassName: string, properties: any) {
+function selectStyleInWebflow(styleName: string) {
+    // Escape the style name and replace spaces with dots for valid CSS selector
+    const escapedStyleName = CSS.escape(styleName).replace(/ /g, '.');
+    const selector = `.${escapedStyleName}`;
+    console.log(`Attempting to select element with selector: ${selector}`);
+
     try {
-        const existingStyles = await webflow.getAllStyles();
-        const existingStyleNames = await Promise.all(existingStyles.map(style => style.getName()));
-
-        if (existingStyleNames.includes(newClassName)) {
-            throw new Error(`Class name "${newClassName}" already exists.`);
+        const elements = document.querySelectorAll(selector);
+        if (elements.length > 0) {
+            elements.forEach(element => {
+                (element as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'center' });
+                (element as HTMLElement).click();
+                console.log(`Successfully selected style: ${styleName}`);
+            });
+        } else {
+            console.log(`No elements found for style: ${styleName}`);
         }
-
-        const newStyle = await webflow.createStyle(newClassName);
-        await newStyle.setProperties(properties);
-
-        const allElements = await webflow.getAllElements();
-        for (const element of allElements) {
-            if (Array.isArray(element.styles)) {
-                for (const style of element.styles) {
-                    const styleName = await style.getName();
-                    if (group.includes(styleName)) {
-                        for (const property in properties) {
-                            if (properties.hasOwnProperty(property)) {
-                                await style.removeProperty(property);
-                            }
-                        }
-                        await newStyle.setProperties(properties);
-                        break;
-                    }
-                }
-            }
-        }
-
-        location.reload();
     } catch (error) {
-        console.error('Error replacing duplicate group:', error);
+        console.error(`Error selecting element with selector: ${selector}`, error);
     }
 }
 
+// Loading functions
 function showLoading() {
-    const loadingElement = document.getElementById('loading') as HTMLElement;
+    const loadingElement = document.getElementById('loading');
     if (loadingElement) {
         loadingElement.style.display = 'block';
     }
 }
 
 function hideLoading() {
-    const loadingElement = document.getElementById('loading') as HTMLElement;
+    const loadingElement = document.getElementById('loading');
     if (loadingElement) {
         loadingElement.style.display = 'none';
     }
 }
+
+// Example function to get all styles and log their names
+async function getAllStylesAndLogNames() {
+    try {
+        const allStyles = await webflow.getAllStyles();
+        if (allStyles.length > 0) {
+            console.log("List of all styles:");
+            for (let i = 0; i < allStyles.length; i++) {
+                const style = allStyles[i];
+                const styleName = await style.getName();
+                console.log(`${i + 1}. Style Name: ${styleName}, Style ID: ${style.id}`);
+            }
+        } else {
+            console.log("No styles found in the current context.");
+        }
+    } catch (error) {
+        console.error('Error retrieving styles:', error);
+    }
+}
+
+// Call the function to log all styles' names
+getAllStylesAndLogNames();
