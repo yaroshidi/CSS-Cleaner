@@ -1,4 +1,4 @@
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     const scanButton = document.getElementById('scanButton');
     if (scanButton) {
         scanButton.addEventListener('click', scanForDuplicates);
@@ -26,7 +26,9 @@ async function scanForDuplicates() {
         }
 
         const result = detectDuplicates(stylesWithProperties);
-        displayDuplicatesAndEmptyStyles(result);
+        const styles = result['duplicates'].flat();
+        const elements = await searchPagesForElements(styles)
+        displayDuplicatesAndEmptyStyles(result, elements);
     } catch (error) {
         console.error('Error scanning for duplicates:', error);
     } finally {
@@ -35,19 +37,76 @@ async function scanForDuplicates() {
     }
 }
 
+interface PageElement {
+    pageId: string;
+    elementId: string;
+    style: string;
+    pageName: string;
+}
+
+const searchPagesForElements = async (styles: string[]): Promise<PageElement[]> => {
+    let elementsWithStyle = [];
+    try { 
+        const pages = await webflow.getAllPagesAndFolders();
+
+        for (const page of pages) {
+            const pageName = await page.getName();
+            try { 
+                if(page.type === 'Page') await webflow.switchPage(page)
+                elementsWithStyle = elementsWithStyle.concat(await searchPageForElements(styles, page?.id || '', pageName))
+            } catch (error) {
+                console.error('Error scanning for duplicates:', error);
+            }
+        }
+    } catch (error) {
+        console.log(error)
+    }
+
+    return elementsWithStyle
+}
+
+const searchPageForElements = async (styles: string[], pageId: string, pageName: string): Promise<PageElement[]> => {
+    try {
+    const allElements = await webflow.getAllElements();
+
+    const elementsWithStyle = [];
+    for (const element of allElements) {
+        if (element.styles) {
+            const elementStyles = await element.getStyles();
+
+            elementStyles.forEach(async (style: Style) => {
+                const styleName = await style.getName();
+                if (styles.includes(styleName)) {
+                    const el = {
+                        pageId: pageId,
+                        pageName: pageName,
+                        elementId: element.id.element,
+                        style: styleName
+                    }
+
+                    elementsWithStyle.push(el);
+                }
+            });
+        }
+    };
+
+    return elementsWithStyle;
+} catch (error) {
+    console.log(error)
+}
+}
+
 function detectDuplicates(styles: Array<{ name: string, properties: any }>) {
     const duplicates: Array<Array<string>> = [];
-    const emptyStyles: Array<string> = [];
     const processed = new Set<number>();
 
     for (let i = 0; i < styles.length; i++) {
         const { name: name1, properties: properties1 } = styles[i];
         if (Object.keys(properties1).length === 0) {
-            emptyStyles.push(name1);
             processed.add(i);
             continue;
         }
-        if (processed.has(i)) continue;
+        if (processed.has(i)) continue; // could be extra line
         const duplicateGroup = [name1];
         for (let j = i + 1; j < styles.length; j++) {
             if (processed.has(j)) continue;
@@ -63,11 +122,16 @@ function detectDuplicates(styles: Array<{ name: string, properties: any }>) {
         processed.add(i);
     }
 
-    return { duplicates, emptyStyles };
+    return { duplicates };
 }
 
-function displayDuplicatesAndEmptyStyles(data: { duplicates: Array<Array<string>>, emptyStyles: Array<string> }) {
+function displayDuplicatesAndEmptyStyles(data: { duplicates: Array<Array<string>> }, elements: PageElement[]) {
     const container = document.getElementById('duplicates-container');
+    const elementsByStyles = elements.reduce((acc, el) => {
+        (acc[el.style] = acc[el.style] || []).push(el);
+        return acc;
+    }, {});
+
     if (container) {
         container.innerHTML = '';
 
@@ -94,7 +158,7 @@ function displayDuplicatesAndEmptyStyles(data: { duplicates: Array<Array<string>
                 const li = document.createElement('li');
                 li.textContent = name;
                 li.addEventListener('click', () => {
-                    selectStyleInWebflow(name);
+                    const elements = elementsByStyles[name];
                 });
                 ul.appendChild(li);
             });
@@ -111,14 +175,27 @@ function displayDuplicatesAndEmptyStyles(data: { duplicates: Array<Array<string>
         emptyContainer.appendChild(emptyTitle);
 
         const ul = document.createElement('ul');
-        data.emptyStyles.forEach(name => {
-            const li = document.createElement('li');
-            li.textContent = name;
-            ul.appendChild(li);
-        });
         emptyContainer.appendChild(ul);
 
         container.appendChild(emptyContainer);
+    }
+}
+
+const getElementsWithStyle = async (style: string) => {
+    // Retrieve all elements in the current context
+    const allElements = await webflow.getAllElements()
+
+    // Print element list
+    if (allElements.length > 0) {
+        allElements.forEach(async (element, index) => {
+            console.log({elementId: element.id, styles: element.styles})
+            // const element = allElements[0]
+            if (element.styles) {
+                const styles = await element.getStyles()
+            }
+        })
+    } else {
+        console.log('No elements found in the current context.')
     }
 }
 
@@ -177,6 +254,3 @@ async function getAllStylesAndLogNames() {
         console.error('Error retrieving styles:', error);
     }
 }
-
-// Call the function to log all styles' names
-getAllStylesAndLogNames();
